@@ -13,10 +13,6 @@ pki/**/csr/*
 pki_backup_*/
 dist/
 
-# Keep empty PKI directory structure in Git
-!pki/**/private/.gitkeep
-!pki/**/csr/.gitkeep
-
 # Active local configuration generated from profiles
 scada/scada_dual_config.json
 
@@ -24,3 +20,9 @@ scada/scada_dual_config.json
 *.pcap
 *.pcapng
 *.log
+
+# Editors
+.idea/
+.vscode/
+*.code-workspace
+*.swp

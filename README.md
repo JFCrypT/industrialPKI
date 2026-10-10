@@ -544,6 +544,42 @@ Gateway -> backend    plaintext
 
 ---
 
+## M262 communication boundary — practical interpretation
+
+The SCADA already contains its TLS client layer. Its Python code configures the
+TLS context and credentials; Python/OpenSSL performs the actual handshake,
+session-key derivation, encryption and decryption.
+
+The current emulator does not implement native TLS, so the gateway is required
+only on the M262 side:
+
+```text
+SCADA == TLS/mTLS / 802 ==> Gateway -- Modbus/TCP / 1502 --> M262 emulator
+          ENCRYPTED                         PLAINTEXT
+```
+
+In the current demonstration, the plaintext M262 backend is the single intentional
+plaintext network segment of the protected M262 path. Because the emulator listens
+on `0.0.0.0:1502`, that backend can also constitute a direct plaintext bypass
+surface if the host network exposes it.
+
+For the physical M262, the gateway-based PoC would replace `1502` with `502`; the
+same plaintext limitation would remain.
+
+The final target removes the gateway from the primary data path:
+
+```text
+SCADA ===== native Modbus/TLS + mTLS / 802 =====> M262
+                    ENCRYPTED END TO END
+```
+
+This requires experimentally confirmed native Modbus/TLS compatibility on the
+M262 and removal or filtering of any parallel plaintext TCP/502 path.
+
+For the complete interoperability and troubleshooting procedure, see
+[`docs/M262_SECURITY_BOUNDARY_AND_CONNECTIVITY.md`](docs/M262_SECURITY_BOUNDARY_AND_CONNECTIVITY.md).
+
+
 ## End-to-end limitation and next physical phase
 
 ### What has been encrypted so far?

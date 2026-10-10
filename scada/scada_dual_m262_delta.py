@@ -148,62 +148,30 @@ class ModbusNode:
             if result.isError():
                 raise RuntimeError(str(result))
 
-    def write_coil_redundant(self, address, value):
+    def write_m262_coil(self, address, value):
         """
-        Redundant write for M262:
-        - FC05 attempt -> write_coil()
-        - FC15 attempt -> write_coils(..., [value])
+        M262 digital-output write using FC15.
 
-        Both methods are executed. The operation is considered successful
-        if at least one method is accepted by the PLC.
+        Schneider documents FC15 (Write Multiple Coils / digital outputs)
+        for the embedded M262 Modbus TCP server. FC05 is not listed as a
+        supported embedded-server request, so even a single-bit write is
+        sent with write_coils(..., [value]).
         """
         with self.lock:
             if not self.client:
                 raise RuntimeError("No Modbus connection")
 
-            errors = []
-            success = False
-
-            # FC05 - Write Single Coil
             try:
-                try:
-                    result_05 = self.client.write_coil(
-                        int(address), bool(value), device_id=self.device_id
-                    )
-                except TypeError:
-                    result_05 = self.client.write_coil(
-                        int(address), bool(value), slave=self.device_id
-                    )
-
-                if result_05.isError():
-                    errors.append(f"FC05: {result_05}")
-                else:
-                    success = True
-            except Exception as exc:
-                errors.append(f"FC05: {exc}")
-
-            # FC15 - Write Multiple Coils, aunque escribimos una sola bobina
-            try:
-                try:
-                    result_15 = self.client.write_coils(
-                        int(address), [bool(value)], device_id=self.device_id
-                    )
-                except TypeError:
-                    result_15 = self.client.write_coils(
-                        int(address), [bool(value)], slave=self.device_id
-                    )
-
-                if result_15.isError():
-                    errors.append(f"FC15: {result_15}")
-                else:
-                    success = True
-            except Exception as exc:
-                errors.append(f"FC15: {exc}")
-
-            if not success:
-                raise RuntimeError(
-                    "FC05 and FC15 both failed: " + " | ".join(errors)
+                result = self.client.write_coils(
+                    int(address), [bool(value)], device_id=self.device_id
                 )
+            except TypeError:
+                result = self.client.write_coils(
+                    int(address), [bool(value)], slave=self.device_id
+                )
+
+            if result.isError():
+                raise RuntimeError(str(result))
 
     def read_coil(self, address):
         with self.lock:
@@ -406,7 +374,7 @@ class PLCPanel(ttk.LabelFrame):
         def worker():
             try:
                 if self.key == "m262":
-                    self.node.write_coil_redundant(addr, value)
+                    self.node.write_m262_coil(addr, value)
                 else:
                     self.node.write_coil(addr, value)
 
@@ -675,7 +643,7 @@ class App(tk.Tk):
         def worker():
             try:
                 # STOP both PLCs
-                self.m262.node.write_coil_redundant(
+                self.m262.node.write_m262_coil(
                     addr_m262, bool(self.m262.cfg["stop_value"])
                 )
                 self.delta.node.write_coil(
@@ -683,7 +651,7 @@ class App(tk.Tk):
                 )
 
                 # START M262 immediately.
-                self.m262.node.write_coil_redundant(
+                self.m262.node.write_m262_coil(
                     addr_m262, bool(self.m262.cfg["start_value"])
                 )
 

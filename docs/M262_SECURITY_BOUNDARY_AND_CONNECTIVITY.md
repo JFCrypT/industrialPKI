@@ -90,10 +90,95 @@ SCADA application / GUI
 
 ---
 
+## 3. Bidirectional packet-capture interpretation
+
+The security boundary must be interpreted in both directions.
+
+### Capture on TCP/802
+
+Filter:
+
+```text
+tcp.port == 802
+```
+
+This captures the TLS session between the SCADA and the gateway:
+
+```text
+SCADA -> Gateway    TLS encrypted
+Gateway -> SCADA    TLS encrypted
+```
+
+For SCADA-to-gateway traffic, the SCADA TLS layer encrypts the Modbus request before it enters the network.
+
+For gateway-to-SCADA traffic, the gateway encrypts the Modbus response before transmitting it, and the SCADA TLS layer decrypts it locally before PyModbus and the GUI process it.
+
+A passive observer on this segment should see TLS records / Application Data rather than directly readable Modbus function codes, addresses or values.
+
+### Capture on TCP/1502
+
+Filter:
+
+```text
+tcp.port == 1502
+```
+
+This captures the plaintext backend between the TLS gateway and the M262 emulator:
+
+```text
+Gateway -> M262 emulator    plaintext Modbus/TCP
+M262 emulator -> Gateway    plaintext Modbus/TCP
+```
+
+For gateway-to-M262 traffic, the gateway has already terminated and decrypted TLS before forwarding the Modbus request.
+
+For M262-to-gateway traffic, the emulator sends ordinary Modbus/TCP to the gateway; the gateway subsequently encrypts that response when forwarding it toward the SCADA on TCP/802.
+
+Wireshark can therefore decode on TCP/1502:
+
+```text
+Unit ID
+Function Code
+coil/register address
+read/write values
+```
+
+### Wireshark evidence: plaintext M262 backend
+
+Save the TCP/1502 capture as:
+
+```text
+docs/images/m262_backend_plaintext_modbus.png
+```
+
+and include it in the repository:
+
+![M262 backend plaintext Modbus/TCP](images/m262_backend_plaintext_modbus.png)
+
+The image demonstrates that both directions of the gateway-to-M262-emulator backend are ordinary readable Modbus/TCP after TLS termination.
+
+It complements the TCP/802 TLS capture:
+
+```text
+TCP/802   SCADA <-> Gateway         encrypted in both directions
+TCP/1502  Gateway <-> M262 emulator plaintext in both directions
+```
+
+### Compact rule
+
+```text
+TCP/802   SCADA <-> Gateway         encrypted in both directions
+TCP/1502  Gateway <-> M262 emulator plaintext in both directions
+```
+
+The current security limitation is therefore not direction-specific. It is the complete plaintext backend segment between the gateway and the current M262 endpoint.
+
+---
+
 ## 2. Current vulnerable point
 
 For the protected M262 path, the only intentionally plaintext **network segment**
-after TLS termination is:
+currently present is the complete bidirectional backend after TLS termination:
 
 ```text
 TLS Gateway <---- plaintext Modbus/TCP ----> M262 backend

@@ -544,40 +544,130 @@ Gateway -> backend    plaintext
 
 ---
 
-## M262 communication boundary — practical interpretation
+## Bidirectional security boundary of the M262 demo
 
-The SCADA already contains its TLS client layer. Its Python code configures the
-TLS context and credentials; Python/OpenSSL performs the actual handshake,
-session-key derivation, encryption and decryption.
-
-The current emulator does not implement native TLS, so the gateway is required
-only on the M262 side:
+The current M262 laboratory path is bidirectional:
 
 ```text
-SCADA == TLS/mTLS / 802 ==> Gateway -- Modbus/TCP / 1502 --> M262 emulator
-          ENCRYPTED                         PLAINTEXT
+SCADA  <==== TLS/mTLS · TCP/802 · ENCRYPTED ====>  TLS Gateway
+TLS Gateway  <---- Modbus/TCP · TCP/1502 · PLAINTEXT ---->  M262 emulator
 ```
 
-In the current demonstration, the plaintext M262 backend is the single intentional
-plaintext network segment of the protected M262 path. Because the emulator listens
-on `0.0.0.0:1502`, that backend can also constitute a direct plaintext bypass
-surface if the host network exposes it.
+The same rule applies in both communication directions.
 
-For the physical M262, the gateway-based PoC would replace `1502` with `502`; the
-same plaintext limitation would remain.
-
-The final target removes the gateway from the primary data path:
+### SCADA -> M262 emulator
 
 ```text
-SCADA ===== native Modbus/TLS + mTLS / 802 =====> M262
-                    ENCRYPTED END TO END
+SCADA
+  |
+  | Modbus request enters the SCADA TLS layer
+  | TLS encrypts it
+  v
+TCP/802
+  |
+  | encrypted TLS application data
+  v
+TLS Gateway
+  |
+  | TLS is terminated and decrypted
+  v
+TCP/1502
+  |
+  | plaintext Modbus/TCP
+  v
+M262 emulator
 ```
 
-This requires experimentally confirmed native Modbus/TLS compatibility on the
-M262 and removal or filtering of any parallel plaintext TCP/502 path.
+### M262 emulator -> SCADA
 
-For the complete interoperability and troubleshooting procedure, see
-[`docs/M262_SECURITY_BOUNDARY_AND_CONNECTIVITY.md`](docs/M262_SECURITY_BOUNDARY_AND_CONNECTIVITY.md).
+```text
+M262 emulator
+  |
+  | plaintext Modbus/TCP
+  v
+TCP/1502
+  |
+  | gateway receives readable Modbus
+  v
+TLS Gateway
+  |
+  | gateway encrypts the response with TLS
+  v
+TCP/802
+  |
+  | encrypted TLS application data
+  v
+SCADA
+  |
+  | SCADA TLS layer decrypts it
+  v
+SCADA application / GUI
+```
+
+### What a sniffer sees
+
+If traffic is captured on:
+
+```text
+tcp.port == 802
+```
+
+the observer sees the bidirectional **SCADA <-> Gateway** TLS session:
+
+```text
+SCADA -> Gateway    encrypted
+Gateway -> SCADA    encrypted
+```
+
+The Modbus payload is not readable as ordinary Modbus/TCP on this segment.
+
+If traffic is captured on:
+
+```text
+tcp.port == 1502
+```
+
+the observer sees the bidirectional **Gateway <-> M262 emulator** backend:
+
+```text
+Gateway -> M262 emulator    plaintext Modbus/TCP
+M262 emulator -> Gateway    plaintext Modbus/TCP
+```
+
+Wireshark can decode Unit ID, function code, coil/register address and values on this backend segment.
+
+Therefore, in the current protected M262 demo:
+
+```text
+TCP/802   = encrypted in BOTH directions
+TCP/1502  = plaintext in BOTH directions
+```
+
+This TCP/1502 backend is the current intentional plaintext network segment and therefore the present security limitation of the M262 path.
+
+The reason the gateway exists is that the current M262 emulator does not implement native TLS. The SCADA already has a TLS-capable client layer. The gateway therefore translates between the SCADA's secure TLS side and the emulator's ordinary Modbus/TCP side.
+
+If the physical M262 supports native Modbus/TLS/mTLS, the target architecture removes the gateway from the main data path:
+
+```text
+SCADA  <==== native Modbus/TLS + mTLS · TCP/802 · ENCRYPTED ====>  M262
+```
+
+In that case, there is no intermediate Gateway <-> M262 plaintext segment. Any parallel plaintext Modbus/TCP service, such as TCP/502, must also be disabled or filtered if the goal is to eliminate plaintext bypass paths.
+
+
+### Wireshark plaintext M262 backend evidence
+
+The following capture shows the bidirectional plaintext Modbus/TCP backend on TCP/1502 between the TLS gateway and the M262 emulator:
+
+![M262 backend plaintext Modbus/TCP](docs/images/m262_backend_plaintext_modbus.png)
+
+This capture should be compared directly with the TLS capture on TCP/802:
+
+```text
+TCP/802   SCADA <-> Gateway         encrypted in both directions
+TCP/1502  Gateway <-> M262 emulator plaintext in both directions
+```
 
 
 ## End-to-end limitation and next physical phase

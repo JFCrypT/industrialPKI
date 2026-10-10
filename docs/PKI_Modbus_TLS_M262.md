@@ -1,68 +1,259 @@
-# CAETI PKI and Modbus/TLS Testbed — Complete Technical Procedure
+# industrialPKI — CAETI PKI, Modbus/TLS Testbed and Raspberry Pi Deployment
 
-This document is the technical reference for the `industrialPKI` proof of concept.
+## 1. Purpose and final security objective
 
-For the shortest operational path, read the repository `README.md` first.
+The final research objective is to protect Modbus communication to the Schneider M262 with PKI-backed mutual TLS while retaining the Delta PLC as the plaintext comparison path.
 
----
-
-## 1. Security objective
-
-The long-term target is:
+Strong end-to-end target:
 
 ```text
+M262
 SCADA ---------------- Modbus/TLS + mTLS / TCP 802 ----------------> M262
                               encrypted end to end
+
+Delta
+SCADA ---------------------- Modbus TCP / 502 ---------------------> Delta
+                               plaintext
 ```
 
-The current validated PoC is:
+### Critical condition for the final objective
+
+End-to-end encryption depends strictly on the **physical M262 being able to terminate TLS/mTLS itself**.
+
+That requires one of the following to exist and be usable on the M262:
+
+1. native Modbus Security / Modbus-TLS server support, or
+2. an equivalent programmable TLS server capability in the M262 runtime that can securely terminate the TLS session and expose the required Modbus semantics.
+
+If the physical M262 cannot terminate TLS/mTLS, then an external gateway can only protect the network up to the gateway. The final gateway-to-M262 hop remains plaintext Modbus TCP.
+
+Therefore, **the current laboratory gateway implementation is a validated TLS/PKI proof of concept, not yet proof of end-to-end encryption to the physical PLC**.
+
+---
+
+## 2. Current validated laboratory architecture
+
+The implementation already validated is:
 
 ```text
-SCADA ---- encrypted mTLS / TCP 802 ----> TLS Gateway ---- plaintext Modbus/TCP ----> M262 backend
+SCADA ---- Modbus/TLS / 802 ----> TLS Gateway ---- Modbus TCP / 1502 ----> M262 emulator
+             PKI + mTLS              TLS termination        plaintext
+
+SCADA ---------------------- Modbus TCP / 1503 ---------------------> Delta emulator
+                               plaintext
 ```
 
-This distinction is fundamental.
+Validated results:
 
-The present PoC proves PKI, mutual authentication, TLS confidentiality and SCADA integration **up to the gateway**.
+- CAETI Root CA created.
+- Gateway X.509 certificate created.
+- SCADA client X.509 certificate created.
+- Certificate chain verified.
+- Mutual TLS handshake validated.
+- SCADA `ModbusTlsClient` validated.
+- Gateway listens on TCP/802.
+- Gateway reaches the M262 emulator on TCP/1502.
+- Delta emulator works directly on TCP/1503.
+- Wireshark shows TLS 1.3 `Encrypted Application Data` on TCP/802.
+- Gateway stop test prevents M262 SCADA communication while the emulator itself remains alive.
+- Gateway restart restores the M262 path.
 
-It does not yet prove end-to-end confidentiality up to the physical PLC.
+### SCADA connected through TLS
+
+![SCADA connected through TLS](images/scada_tls_connected.png)
+
+### TLS gateway stopped
+
+![SCADA with TLS gateway offline](images/scada_gateway_offline.png)
 
 ---
 
-## 2. Current security boundary
+
+## PKI trust and credential placement
 
 ```mermaid
-flowchart LR
-    SCADA["SCADA"]
-    GW["TLS Gateway"]
-    PLC["M262 backend"]
-
-    SCADA -->|"Modbus over mTLS<br/>TCP/802<br/>ENCRYPTED"| GW
-    GW -->|"Modbus/TCP<br/>TCP/1502 or 502<br/>PLAINTEXT"| PLC
+graph TD
+    CA[CAETI Industrial Root CA] -->|X.509 signature| GW[Gateway certificate]
+    CA -->|X.509 signature| SC[SCADA certificate]
+    SC <-->|mTLS on TCP/802| GW
+    GW -->|current PoC: plaintext Modbus TCP| PLC[M262 / emulator backend]
 ```
 
-The gateway is a TLS termination point.
+```text
+CA workstation
+  rootCA.key      PRIVATE; never transferred
+  rootCA.crt
 
-A passive observer on the SCADA-to-gateway segment sees TLS ciphertext.
+Raspberry gateway
+  rootCA.crt
+  gateway.crt
+  gateway.key
 
-A passive observer on the gateway-to-M262 segment can see standard Modbus/TCP because TLS has already been terminated.
+SCADA host
+  rootCA.crt
+  scada.crt
+  scada.key
+```
+
+## 3. Repository structure
+
+```text
+industrialPKI/
+├── attack/
+├── docs/
+│   └── images/
+├── emulator/
+├── gateway/
+├── pki/
+├── scada/
+├── scripts/
+├── docker-compose.yml
+├── requirements.txt
+├── .env.emulator
+└── .env.physical
+```
+
+Run all project commands from the repository root unless otherwise stated.
+
+Example local path:
+
+```bash
+cd ~/Documents/Proyectos/industrialPKI
+```
 
 ---
 
-## 3. PKI model
+## 4. Python virtual environment
 
-```mermaid
-flowchart TD
-    CA["CAETI Industrial Root CA"]
-    SC["SCADA certificate"]
-    GW["Gateway certificate"]
+Create the environment:
 
-    CA -->|"signs"| SC
-    CA -->|"signs"| GW
-    SC <-->|"mutual TLS authentication"| GW
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-Identity convention:
+Install Tkinter if needed:
+
+```bash
+sudo apt update
+sudo apt install python3-tk
+```
+
+Check PyModbus:
+
+```bash
+python -c "import pymodbus; print(pymodbus.__version__)"
+```
+
+The validated laboratory environment uses PyModbus 3.15.0.
+
+Activate the environment later with:
+
+```bash
+source .venv/bin/activate
+```
+
+Leave it with:
+
+```bash
+deactivate
+```
+
+---
+
+## 5. Configuration profiles
+
+The SCADA always reads:
+
+```text
+scada/scada_dual_config.json
+```
+
+Two profiles are maintained:
+
+```text
+scada/scada_dual_config_emulator.json
+scada/scada_dual_config_physical.json
+```
+
+### Select emulator mode
+
+```bash
+./scripts/select_emulator.sh
+```
+
+Equivalent commands:
+
+```bash
+cp .env.emulator .env
+cp scada/scada_dual_config_emulator.json scada/scada_dual_config.json
+```
+
+### Select physical mode
+
+```bash
+./scripts/select_physical.sh
+```
+
+Equivalent commands:
+
+```bash
+cp .env.physical .env
+cp scada/scada_dual_config_physical.json scada/scada_dual_config.json
+```
+
+The different laboratory ports are intentional:
+
+```text
+M262 emulator -> TCP/1502
+Delta emulator -> TCP/1503
+TLS gateway client side -> TCP/802
+physical Modbus TCP -> TCP/502
+```
+
+---
+
+## Cryptographic algorithms implemented
+
+The current implementation uses:
+
+| Purpose | Algorithm / parameter |
+|---|---|
+| Root CA key pair | RSA 4096-bit |
+| Gateway key pair | RSA 3072-bit |
+| SCADA key pair | RSA 3072-bit |
+| X.509 certificate signatures | SHA-256 with RSA (`sha256WithRSAEncryption`) |
+| Certificate format | X.509 v3 |
+| Transport security | TLS with mutual authentication (mTLS) |
+| Minimum TLS version | TLS 1.2 |
+| Experimentally observed TLS version | TLS 1.3 |
+
+The gateway certificate is issued for `serverAuth`; the SCADA certificate is issued for `clientAuth`.
+
+The TLS data-plane cipher suite is not pinned by the project. Python/OpenSSL and stunnel/OpenSSL negotiate the session cipher and key-exchange parameters. This distinction is important: RSA is used for PKI identity/signature operations, while bulk Modbus traffic is protected by symmetric TLS session keys after the handshake.
+
+Do not document a fixed algorithm such as AES-256-GCM unless that cipher suite is explicitly configured or recorded from the negotiated session.
+
+Exact session parameters can be inspected with:
+
+```bash
+openssl s_client \
+  -connect 127.0.0.1:802 \
+  -cert pki/scada/certs/scada.crt \
+  -key pki/scada/private/scada.key \
+  -CAfile pki/ca/certs/rootCA.crt \
+  -brief
+```
+
+Full details: [`CRYPTOGRAPHIC_PROFILE.md`](CRYPTOGRAPHIC_PROFILE.md).
+
+---
+
+## 6. CAETI PKI identities
+
+Current PKI identity convention:
 
 ```text
 Root CA
@@ -84,45 +275,20 @@ OU=SCADA
 CN=scada-testbed
 ```
 
-Credential distribution:
+PKI material:
 
 ```text
-CA workstation
-  rootCA.key
-  rootCA.crt
+pki/ca/private/rootCA.key
+pki/ca/certs/rootCA.crt
 
-Gateway
-  rootCA.crt
-  gateway.crt
-  gateway.key
+pki/gateway/private/gateway.key
+pki/gateway/certs/gateway.crt
 
-SCADA
-  rootCA.crt
-  scada.crt
-  scada.key
+pki/scada/private/scada.key
+pki/scada/certs/scada.crt
 ```
 
-`rootCA.key` remains exclusively on the trusted CA workstation.
-
----
-
-## 4. Generate the PKI
-
-From the repository root:
-
-```bash
-./scripts/generate_pki.sh <GATEWAY_IP>
-```
-
-Example:
-
-```bash
-./scripts/generate_pki.sh 192.168.0.24
-```
-
-The generated gateway certificate includes the physical gateway IP in the Subject Alternative Name.
-
-Verify:
+Verify the chain:
 
 ```bash
 openssl verify \
@@ -131,7 +297,14 @@ openssl verify \
   pki/scada/certs/scada.crt
 ```
 
-Inspect identities:
+Expected:
+
+```text
+pki/gateway/certs/gateway.crt: OK
+pki/scada/certs/scada.crt: OK
+```
+
+Check subjects:
 
 ```bash
 openssl x509 -in pki/ca/certs/rootCA.crt -noout -subject
@@ -139,144 +312,197 @@ openssl x509 -in pki/gateway/certs/gateway.crt -noout -subject
 openssl x509 -in pki/scada/certs/scada.crt -noout -subject
 ```
 
-All operational identities must use `O = CAETI`.
+The gateway log should identify the SCADA as:
+
+```text
+Certificate accepted at depth=0: C=AR, O=CAETI, OU=SCADA, CN=scada-testbed
+```
+
+### Secret-handling rule
+
+Never publish or distribute the CA private key:
+
+```text
+rootCA.key
+```
+
+The Root CA private key remains on the CA workstation.
 
 ---
 
-## 5. Export credentials
+## 7. Docker TLS gateway
+
+Check Docker:
 
 ```bash
-./scripts/export_credentials.sh
+docker --version
+docker compose version
+sudo systemctl enable --now docker
 ```
 
-Output:
+The gateway exposes:
 
 ```text
-dist/gateway_credentials.tar.gz
-dist/scada_credentials.tar.gz
+TCP/802
 ```
 
-Gateway bundle:
+and forwards decrypted traffic to the backend configured by `.env`.
 
-```text
-rootCA.crt
-gateway.crt
-gateway.key
-```
+### Emulator backend
 
-SCADA bundle:
+`.env.emulator` points the gateway to the M262 emulator on port 1502.
 
-```text
-rootCA.crt
-scada.crt
-scada.key
-```
+### Physical backend for the current gateway PoC
 
-The Root CA private key is never exported.
+`.env.physical` points the gateway to the physical M262 Modbus TCP server on port 502.
 
-Transfer the deployment bundles only over a trusted encrypted administrative channel or controlled removable media.
+**Important:** this physical gateway mode does not provide end-to-end encryption. TLS ends at the gateway and the 502 hop is plaintext.
 
----
-
-## 6. Local testbed configuration
-
-### Python environment
+Start/rebuild:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+docker compose build
+docker compose up -d
+docker compose ps
 ```
 
-### Emulator profile
+View logs:
 
 ```bash
-cp .env.emulator .env
-cp scada/scada_dual_config_emulator.json scada/scada_dual_config.json
-```
-
-Expected endpoints:
-
-```text
-SCADA -> M262 TLS gateway   127.0.0.1:802
-Gateway -> M262 emulator    TCP/1502
-SCADA -> Delta emulator     127.0.0.1:1503
-```
-
-### Terminal 1
-
-```bash
-source .venv/bin/activate
-python emulator/plc_emulator.py
-```
-
-### Terminal 2
-
-```bash
-docker compose up -d --build
 docker compose logs -f
 ```
 
-### Terminal 3
-
-```bash
-source .venv/bin/activate
-python scada/scada_dual_m262_delta.py
-```
-
----
-
-## 7. Expected gateway evidence
-
-A successful SCADA connection produces log entries such as:
-
-```text
-Service [modbus-m262] accepted connection ...
-Certificate accepted at depth=0: C=AR, O=CAETI, OU=SCADA, CN=scada-testbed
-s_connect: connected 172.17.0.1:1502
-Service [modbus-m262] connected remote server ...
-```
-
-Interpretation:
-
-```text
-certificate accepted
-  -> SCADA identity trusted by the gateway
-
-connected 172.17.0.1:1502
-  -> gateway reached the M262 emulator backend
-```
-
----
-
-## 8. Negative gateway test
-
-Stop the gateway:
+Stop:
 
 ```bash
 docker compose down
 ```
 
-The M262 emulator may remain alive on TCP/1502, but a new SCADA connection through TCP/802 must fail.
+A successful startup includes:
 
-Restart:
-
-```bash
-docker compose up -d
+```text
+Configuration successful
 ```
-
-Then reconnect the M262 path from the SCADA.
-
-This verifies that the SCADA protected path depends on the TLS gateway and does not intentionally bypass it.
-
-The stable GUI does not claim to be a transport-health monitoring system; an already-open visual state may need an explicit disconnect/reconnect or fresh operation to reflect a gateway failure.
 
 ---
 
-## 9. Wireshark evidence
+## 8. Fast local startup — three terminals
 
-Protected segment:
+### Terminal 1 — PLC emulator
+
+```bash
+cd ~/Documents/Proyectos/industrialPKI
+source .venv/bin/activate
+./scripts/select_emulator.sh
+python emulator/plc_emulator.py
+```
+
+Expected listeners:
+
+```text
+M262 emulator: 0.0.0.0:1502
+Delta emulator: 0.0.0.0:1503
+```
+
+Check:
+
+```bash
+ss -ltnp | grep -E ':1502|:1503'
+```
+
+### Terminal 2 — TLS gateway
+
+```bash
+cd ~/Documents/Proyectos/industrialPKI
+./scripts/select_emulator.sh
+docker compose up -d
+docker compose logs -f
+```
+
+Expected path:
+
+```text
+SCADA -> TLS/802 -> Gateway -> Modbus TCP/1502 -> M262 emulator
+```
+
+### Terminal 3 — SCADA
+
+```bash
+cd ~/Documents/Proyectos/industrialPKI
+source .venv/bin/activate
+python scada/scada_dual_m262_delta.py
+```
+
+Emulator endpoints:
+
+```text
+M262 -> 127.0.0.1:802, transport=tls
+Delta -> 127.0.0.1:1503, transport=tcp
+```
+
+---
+
+## 9. Validate the mandatory TLS path
+
+With the emulator and SCADA running, stop the gateway:
+
+```bash
+docker stop industrialpki-gateway
+```
+
+The M262 path must become unavailable even though the M262 emulator is still running on TCP/1502.
+
+Expected validation behavior:
+
+```text
+A new/repeated M262 connection attempt fails with "Could not connect to PLC".
+```
+
+The stable SCADA intentionally has no automatic transport-health watchdog. If the gateway is stopped after a connection is already open, the GUI may retain a stale `CONNECTED/ONLINE` label until the operator disconnects/reconnects or starts a fresh SCADA session. The security test is the failed connection through TCP/802 while the emulator remains alive on TCP/1502.
+
+The Delta emulator can continue to operate independently on TCP/1503.
+
+Restore the gateway:
+
+```bash
+docker start industrialpki-gateway
+```
+
+Reconnect the M262 from the SCADA. Communication must be restored.
+
+This test proves that the SCADA is using the TLS gateway and is not bypassing it to reach the emulator directly.
+
+---
+
+## 10. mTLS test without the SCADA
+
+```bash
+openssl s_client \
+  -connect 127.0.0.1:802 \
+  -cert pki/scada/certs/scada.crt \
+  -key pki/scada/private/scada.key \
+  -CAfile pki/ca/certs/rootCA.crt
+```
+
+Expected:
+
+```text
+Verify return code: 0 (ok)
+```
+
+The gateway should log the accepted CAETI SCADA certificate.
+
+A client without a valid certificate must not be accepted as an authenticated mTLS participant.
+
+---
+
+## 11. Wireshark validation
+
+Capture on `any` during local testing.
+
+### Encrypted SCADA-to-gateway side
+
+Filter:
 
 ```text
 tcp.port == 802
@@ -285,91 +511,301 @@ tcp.port == 802
 Expected:
 
 ```text
-TLSv1.2 or TLSv1.3
-Client Hello
-Server Hello
-Application Data
+TLSv1.3 Client Hello
+TLSv1.3 Server Hello
+TLSv1.3 Application Data
 Encrypted Application Data
 ```
 
-Emulator backend:
+Modbus function codes, coil addresses, and values must not be readable in plaintext on this segment.
+
+### Plaintext gateway-to-emulator side
+
+Filter:
 
 ```text
 tcp.port == 1502
 ```
 
-Expected: standard Modbus/TCP after TLS termination.
+With active M262 polling/control, Wireshark should decode ordinary Modbus TCP after TLS termination.
 
-The two captures represent the same architectural boundary:
+This comparison demonstrates exactly what the current PoC protects:
 
 ```text
-before TLS termination    encrypted
-after TLS termination     plaintext
+SCADA -> Gateway       encrypted TLS/802
+Gateway -> M262 emu    plaintext Modbus TCP/1502
+```
+
+It must **not** be presented as end-to-end M262 encryption.
+
+### Delta emulator comparison
+
+Filter:
+
+```text
+tcp.port == 1503
+```
+
+Delta remains plain Modbus TCP.
+
+---
+
+## 12. Physical M262 phase — compatibility decision point
+
+The next step with the physical controller is not simply replacing port 1502 with 502. The first task is to establish whether the M262 can terminate TLS/mTLS itself.
+
+### Required decision
+
+Determine whether the physical M262 provides:
+
+```text
+native Modbus Security / Modbus-TLS + certificate authentication
+```
+
+or an equivalent usable TLS server capability inside the controller runtime.
+
+### Case A — M262 supports direct TLS/mTLS termination
+
+This is the desired final architecture:
+
+```text
+SCADA ---------------- TLS/802 ----------------> M262
+                encrypted end to end
+```
+
+In this case, provision the CA/certificates required by the M262, point `ModbusTlsClient` directly at the PLC's secure endpoint, and validate with Wireshark that the traffic remains encrypted all the way to the PLC interface.
+
+Only after this test can the project claim end-to-end Modbus encryption to the M262.
+
+### Case B — M262 does not support TLS/mTLS termination
+
+The external gateway architecture remains:
+
+```text
+SCADA ---- TLS/802 ----> Gateway ---- Modbus TCP/502 ----> M262
+             encrypted                 plaintext
+```
+
+This still protects the SCADA-to-gateway network segment, but it **does not meet the strong end-to-end encryption objective**.
+
+The limitation must be explicitly reported rather than hidden.
+
+---
+
+## 13. Physical Delta profile
+
+Current mapped values:
+
+```text
+Y0 RED        -> 1281
+Y1 YELLOW     -> 1282
+Y2 GREEN      -> 1283
+Y3 START/STOP -> 1284
+Y5 HACKED     -> 1286
+```
+
+Control values:
+
+```text
+START -> 1
+STOP  -> 0
+```
+
+The physical emergency address remains blank until the final Delta ladder mapping is confirmed.
+
+---
+
+## 14. Raspberry Pi deployment
+
+The Raspberry Pi can host the TLS gateway PoC because the gateway is containerized.
+
+This deployment is useful for portability and for the remote site field testing, but remember the limitation: if TLS terminates on the Raspberry, the Raspberry-to-M262 link is plaintext.
+
+### 14.1 Install Docker on the Raspberry Pi
+
+Use a 64-bit Raspberry Pi OS installation.
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl git
+```
+
+Install Docker Engine and the Compose plugin using the supported Docker repository for the Raspberry Pi OS / Debian base in use.
+
+Verify:
+
+```bash
+docker --version
+docker compose version
+```
+
+Enable Docker:
+
+```bash
+sudo systemctl enable --now docker
+```
+
+Optionally add the deployment user to the Docker group:
+
+```bash
+sudo usermod -aG docker $USER
+```
+
+Log out and back in after changing group membership.
+
+### 14.2 Clone the sanitized repository
+
+```bash
+cd ~/Documents
+git clone <industrialPKI-repository-url>
+cd industrialPKI
+```
+
+Do not store operational private keys in GitHub.
+
+### 14.3 Provision gateway credentials manually
+
+For the current gateway deployment, securely transfer to the deployment operator / the Raspberry Pi:
+
+```text
+rootCA.crt
+gateway.crt
+gateway.key
+```
+
+Place them at:
+
+```text
+pki/ca/certs/rootCA.crt
+pki/gateway/certs/gateway.crt
+pki/gateway/private/gateway.key
+```
+
+The SCADA host separately requires:
+
+```text
+rootCA.crt
+scada.crt
+scada.key
+```
+
+The following must **never** be sent to the Raspberry or committed to GitHub:
+
+```text
+rootCA.key
+```
+
+For this laboratory, manual secure transfer of issued endpoint credentials is acceptable and straightforward. A more mature deployment would generate the gateway private key on the Raspberry, export only a CSR, sign it on the CA workstation, and return only the signed certificate and Root CA certificate.
+
+### 14.4 Select physical gateway configuration
+
+```bash
+./scripts/select_physical.sh
+```
+
+Confirm `.env` points to the intended M262 backend if testing the gateway architecture.
+
+### 14.5 Start the Raspberry gateway
+
+```bash
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+Logs:
+
+```bash
+docker compose logs -f
+```
+
+Expected:
+
+```text
+Configuration successful
+```
+
+When a valid SCADA connects:
+
+```text
+Certificate accepted at depth=0: C=AR, O=CAETI, OU=SCADA, CN=scada-testbed
+```
+
+### 14.6 Network validation
+
+```bash
+ss -ltnp | grep ':802'
+```
+
+The Raspberry should listen on TCP/802.
+
+Then validate SCADA connectivity and packet captures.
+
+---
+
+## 15. GitHub publication guidance
+
+The public repository should include:
+
+- source code;
+- Docker configuration;
+- setup scripts;
+- sanitized configuration templates;
+- Markdown documentation;
+- SCADA screenshots;
+- textual emulator examples;
+- textual gateway log examples;
+- optionally a Wireshark screenshot showing `Encrypted Application Data` without exposing sensitive material.
+
+Recommended screenshots:
+
+```text
+docs/images/scada_tls_connected.png
+docs/images/scada_gateway_offline.png
+```
+
+For emulator behavior and gateway connection evidence, text blocks are preferable to terminal screenshots because they are searchable, copyable, and reproducible.
+
+Never publish:
+
+```text
+*.key
+*.csr
+.env
+.venv/
+operational PKI bundles
+private packet captures containing sensitive network data
 ```
 
 ---
 
-## 10. Raspberry Pi physical gateway
-
-For the complete field procedure, see:
+## 16. Validation checklist
 
 ```text
-docs/PKI_Modbus_TLS_M262_CAETI_Raspberry.md
+[x] CAETI Root CA created
+[x] Gateway certificate created
+[x] SCADA client certificate created
+[x] Certificate chain verified
+[x] Docker TLS gateway starts
+[x] TCP/802 exposed
+[x] mTLS client certificate accepted
+[x] Gateway reaches M262 emulator backend
+[x] SCADA uses TLS path to M262 emulator
+[x] Gateway-off test makes a new/repeated M262 connection attempt fail while the emulator remains alive
+[x] Gateway-on test restores M262 SCADA communication
+[x] Wireshark shows TLS encrypted application data on 802
+[x] Current PoC limitation identified: gateway-to-backend Modbus is plaintext
+[ ] Physical M262 direct TLS/mTLS capability verified
+[ ] End-to-end SCADA-to-M262 TLS validated
+[ ] Physical M262 coil offsets confirmed
+[ ] Physical Delta mapping fully confirmed
+[ ] Raspberry Pi field deployment validated
 ```
 
-The deployment principle is:
+## 17. Current project conclusion
 
-```text
-SCADA -> mTLS/TCP 802 -> Raspberry Pi Gateway -> Modbus/TCP 502 -> M262
-```
+The PKI, mutual authentication, SCADA TLS client, TLS transport, gateway, emulators, failure behavior, and packet-capture evidence are validated.
 
-This is still not end-to-end encryption to the PLC because TLS terminates on the Raspberry Pi.
+The project is ready for the **physical M262 compatibility-assessment phase**.
 
----
-
-## 11. Physical M262 decision point
-
-End-to-end confidentiality requires the physical M262 itself to terminate the protected channel.
-
-The next experiment must answer:
-
-> Does the specific Schneider M262 configuration support native Modbus/TLS / Modbus Security with certificate-based authentication on the PLC itself, or expose an equivalent usable TLS server capability?
-
-If yes:
-
-```text
-SCADA ===== Modbus/TLS + mTLS =====> M262
-```
-
-If no:
-
-```text
-SCADA ===== TLS =====> Gateway ----- plaintext Modbus -----> M262
-```
-
-In the second case the final segment cannot be described as cryptographically protected.
-
----
-
-## 12. Claims that are supported now
-
-Supported:
-
-```text
-PKI-backed mutual TLS
-SCADA identity authentication
-Gateway identity authentication
-Encrypted SCADA-to-gateway transport
-TLS traffic on TCP/802
-Modbus backend forwarding
-Wireshark encrypted application data
-Portable Linux/Raspberry gateway deployment
-```
-
-Not yet supported:
-
-```text
-native M262 Modbus/TLS
-end-to-end SCADA-to-M262 confidentiality
-end-to-end SCADA-to-M262 integrity/authentication at the PLC endpoint
-```
+The decisive remaining question is whether the M262 can terminate TLS/mTLS itself. End-to-end Modbus encryption depends strictly on that capability. Until it is verified, the project must claim only **SCADA-to-gateway encrypted Modbus transport**, not end-to-end encryption to the PLC.

@@ -1,85 +1,61 @@
-# PKI Material
+# PKI material
 
-The public repository must contain no operational private keys.
+This directory intentionally contains **no operational credentials** in the public repository.
 
----
+Generated/provisioned files are ignored by Git.
 
 ## CA workstation
 
+The CA workstation may contain:
+
 ```text
-pki/ca/private/rootCA.key
+pki/ca/private/rootCA.key      PRIVATE — never leave the CA workstation
+pki/ca/certs/rootCA.crt        public trust anchor
+```
+
+## TLS gateway
+
+The Raspberry Pi / gateway requires only:
+
+```text
 pki/ca/certs/rootCA.crt
+pki/gateway/certs/gateway.crt
+pki/gateway/private/gateway.key
 ```
 
-`rootCA.key` is the most sensitive asset in the project.
+It does **not** require `rootCA.key`.
 
-It must:
+## SCADA host
 
-- remain on the trusted CA workstation;
-- never be committed to Git;
-- never be copied to the Raspberry Pi gateway;
-- never be copied to the SCADA host.
-
----
-
-## TLS gateway credentials
+The SCADA host requires:
 
 ```text
-rootCA.crt
-gateway.crt
-gateway.key
+pki/ca/certs/rootCA.crt
+pki/scada/certs/scada.crt
+pki/scada/private/scada.key
 ```
 
-For the current PoC, these files are exported as:
+Use `scripts/export_credentials.sh` on the CA workstation to create separate gateway and SCADA deployment bundles. Transfer them only through a trusted/encrypted channel or controlled removable media.
+
+## Field-test recommendation
+
+For a remote laboratory deployment, the simplest reproducible workflow is to generate/sign the PKI on the CA workstation and securely transfer only the gateway credential bundle to the gateway host. The bundle contains `rootCA.crt`, `gateway.crt`, and `gateway.key`; it never contains `rootCA.key`.
+
+Generating the gateway private key directly on the Raspberry and using a CSR is preferable for stronger key custody, but that CSR workflow is not the default automated path in this repository.
+
+## Implemented cryptographic algorithms
 
 ```text
-dist/gateway_credentials.tar.gz
+Root CA key             RSA 4096-bit
+Gateway key             RSA 3072-bit
+SCADA key               RSA 3072-bit
+Certificate signatures  SHA-256 with RSA
+Certificate format      X.509 v3
+TLS minimum             TLS 1.2
+Observed TLS            TLS 1.3
+Authentication          mutual TLS (mTLS)
 ```
 
-and transferred through a trusted administrative channel.
+The exact symmetric TLS cipher suite is negotiated at runtime and is not currently pinned in project configuration.
 
----
-
-## SCADA credentials
-
-```text
-rootCA.crt
-scada.crt
-scada.key
-```
-
-For deployment they are exported as:
-
-```text
-dist/scada_credentials.tar.gz
-```
-
----
-
-## Generate
-
-```bash
-./scripts/generate_pki.sh <gateway-ip>
-```
-
-Example:
-
-```bash
-./scripts/generate_pki.sh 192.168.0.24
-```
-
-## Export
-
-```bash
-./scripts/export_credentials.sh
-```
-
----
-
-## Key-custody note
-
-The default PoC workflow generates the gateway private key on the CA/development workstation and transfers it inside the protected gateway bundle.
-
-For stronger production key custody, a future hardening workflow should generate `gateway.key` directly on the Raspberry Pi and send only a CSR to the CA workstation for signing.
-
-That stronger CSR model is optional and is not required for the current laboratory PoC.
+See [`../docs/CRYPTOGRAPHIC_PROFILE.md`](../docs/CRYPTOGRAPHIC_PROFILE.md).

@@ -1,0 +1,26 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+
+# Operational PKI material: never commit
+*.key
+*.csr
+pki/**/*.crt
+pki/**/*.srl
+pki/**/private/*
+pki/**/csr/*
+pki_backup_*/
+dist/
+
+# Keep empty PKI directory structure in Git
+!pki/**/private/.gitkeep
+!pki/**/csr/.gitkeep
+
+# Active local configuration generated from profiles
+scada/scada_dual_config.json
+
+# Packet captures / local artifacts
+*.pcap
+*.pcapng
+*.log

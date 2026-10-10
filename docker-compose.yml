@@ -1,0 +1,16 @@
+services:
+  modbus-tls-gateway:
+    build: ./gateway
+    container_name: industrialpki-gateway
+    restart: unless-stopped
+    ports:
+      - "802:802"
+    environment:
+      M262_IP: ${M262_IP:?M262_IP is required}
+      M262_PORT: ${M262_PORT:?M262_PORT is required}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./pki/ca/certs/rootCA.crt:/pki/rootCA.crt:ro
+      - ./pki/gateway/certs/gateway.crt:/pki/gateway.crt:ro
+      - ./pki/gateway/private/gateway.key:/pki/gateway.key:ro

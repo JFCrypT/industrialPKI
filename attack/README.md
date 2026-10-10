@@ -1,7 +1,16 @@
-# Attack Test Script
+# Controlled Attack Test Script
 
-`modifPLC.py` is the existing Modbus manipulation script used in the controlled testbed.
+`modifPLC.py` is retained as a controlled Modbus manipulation tool for the authorized laboratory testbed.
 
-It is kept separate from the legitimate SCADA path so packet captures can compare normal control traffic, protected M262 traffic, and direct Modbus manipulation in the lab.
+Its purpose is to compare:
 
-Run only against the authorized testbed.
+```text
+legitimate SCADA traffic
+protected M262-path traffic
+plaintext Delta-path traffic
+direct Modbus manipulation in the lab
+```
+
+Use it only against systems for which explicit authorization exists.
+
+This tool is not part of the PKI deployment path.

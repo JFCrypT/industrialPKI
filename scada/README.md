@@ -1,18 +1,24 @@
 # Dual SCADA — M262 + Delta
 
-The SCADA uses two transports simultaneously:
+The SCADA operates two independent paths:
 
-- **M262 test path:** Modbus/TLS through the industrialPKI gateway on TCP/802.
-- **Delta:** plain Modbus TCP.
+```text
+M262 path   -> TLS/mTLS through the gateway on TCP/802
+Delta path  -> standard plaintext Modbus/TCP
+```
 
-The current local proof of concept validates TLS between the SCADA and the gateway. It does **not** yet prove end-to-end TLS termination inside the physical M262.
+The current PoC encrypts only the SCADA-to-gateway segment. TLS terminates at the gateway.
 
-## Configuration profiles
+---
 
-Two profiles are provided:
+## Configuration files
 
-- `scada_dual_config_emulator.json`
-- `scada_dual_config_physical.json`
+Two profiles are maintained:
+
+```text
+scada_dual_config_emulator.json
+scada_dual_config_physical.json
+```
 
 The application always loads:
 
@@ -20,17 +26,21 @@ The application always loads:
 scada_dual_config.json
 ```
 
-Select a profile by copying it to that filename, or use:
+For emulator testing:
 
 ```bash
-./scripts/select_emulator.sh
+cp scada/scada_dual_config_emulator.json \
+   scada/scada_dual_config.json
 ```
 
-or:
+For physical PLC testing:
 
 ```bash
-./scripts/select_physical.sh
+cp scada/scada_dual_config_physical.json \
+   scada/scada_dual_config.json
 ```
+
+---
 
 ## Run
 
@@ -41,60 +51,82 @@ source .venv/bin/activate
 python scada/scada_dual_m262_delta.py
 ```
 
-## M262 TLS client
+---
 
-The M262 client uses `ModbusTlsClient` with:
+## TLS credentials
 
-- Root CA: `pki/ca/certs/rootCA.crt`
-- Client certificate: `pki/scada/certs/scada.crt`
-- Client private key: `pki/scada/private/scada.key`
-
-The M262 write path attempts both FC05 and FC15 as required by the laboratory implementation. Reads use FC01.
-
-### Validated emulator path
+The M262 protected path uses:
 
 ```text
-SCADA -> 127.0.0.1:802 (mTLS) -> TLS gateway -> M262 emulator:1502
+pki/ca/certs/rootCA.crt
+pki/scada/certs/scada.crt
+pki/scada/private/scada.key
 ```
 
-### Connected state
+The gateway authenticates the SCADA certificate against the CAETI Root CA.
+
+---
+
+## Validated emulator path
+
+```text
+SCADA -> 127.0.0.1:802 -> TLS gateway -> M262 emulator:1502
+```
+
+Delta:
+
+```text
+SCADA -> 127.0.0.1:1503 -> Delta emulator
+```
+
+---
+
+## Screenshots
+
+Connected protected path:
 
 ![SCADA connected through TLS](../docs/images/scada_tls_connected.png)
 
-### Gateway failure behavior
+Gateway unavailable:
 
-When the TLS gateway is stopped, a new or repeated connection attempt to the M262 path fails:
+![SCADA with gateway offline](../docs/images/scada_gateway_offline.png)
 
-![SCADA with TLS gateway offline](../docs/images/scada_gateway_offline.png)
+The stable GUI is a laboratory control interface, not a full transport-health monitoring platform. A stale visual `CONNECTED` state may require an explicit reconnect or fresh operation after a gateway failure.
 
-This negative test demonstrates that the SCADA is not bypassing TLS and connecting directly to the M262 emulator. The stable GUI does not implement an automatic transport-health watchdog, so an already-open panel can retain a stale CONNECTED label until disconnect/reconnect or a fresh connection attempt.
+---
 
-## End-to-end limitation
+## Physical Delta mapping currently used
 
-The current gateway terminates TLS. Consequently, the gateway-to-backend Modbus segment is plaintext.
-
-True end-to-end Modbus encryption requires the physical M262 to terminate TLS/mTLS itself. This depends strictly on M262 compatibility with native Modbus Security / Modbus-TLS or an equivalent programmable TLS server capability. Until that is verified, the project must describe the current implementation as **SCADA-to-gateway encrypted**, not SCADA-to-M262 end-to-end encrypted.
-
-## Delta physical mapping currently used
-
-- Y0 / red: `1281`
-- Y1 / yellow: `1282`
-- Y2 / green: `1283`
-- Y3 / START/STOP: `1284`
-- Y5 / HACKED: `1286`
-- Emergency is intentionally left blank in the physical profile until the final ladder mapping is confirmed.
+```text
+Red          1281
+Yellow       1282
+Green        1283
+START/STOP   1284
+HACKED       1286
+Emergency    pending physical confirmation
+```
 
 Physical Delta logic:
 
-- START = `1`
-- STOP = `0`
-
-## TLS endpoint identity checking
-
-The physical profile enables `tls_check_hostname: true`. The gateway certificate must therefore contain the actual Raspberry/gateway IP address in its Subject Alternative Name (SAN). Generate the PKI with the real gateway IP, for example:
-
-```bash
-./scripts/generate_pki.sh 192.168.0.24
+```text
+START = 1
+STOP  = 0
 ```
 
-The emulator profile keeps hostname checking disabled for the local laboratory workflow. Certificate-chain validation and mutual client authentication are still performed.
+---
+
+## End-to-end limitation
+
+Current:
+
+```text
+SCADA == encrypted ==> Gateway -- plaintext Modbus --> M262
+```
+
+Target:
+
+```text
+SCADA ============== encrypted ==============> M262
+```
+
+The target depends strictly on verified native Modbus/TLS / Modbus Security support, or an equivalent TLS termination capability, on the physical M262.

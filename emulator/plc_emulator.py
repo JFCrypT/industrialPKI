@@ -48,21 +48,21 @@ COIL_COUNT = 65535
 # ============================================================
 
 # M262
-M262_TURN_ON   = 100
+M262_TURN_ON = 100
 M262_EMERGENCY = 101
-M262_HACKED    = 102
-M262_RED       = 110
-M262_YELLOW    = 111
-M262_GREEN     = 112
+M262_HACKED = 102
+M262_RED = 110
+M262_YELLOW = 111
+M262_GREEN = 112
 M262_RUN_STATE = 113
 
 # Delta
-DELTA_TURN_ON   = 3120
+DELTA_TURN_ON = 3120
 DELTA_EMERGENCY = 3121
-DELTA_HACKED    = 3122
-DELTA_RED       = 3130
-DELTA_YELLOW    = 3131
-DELTA_GREEN     = 3132
+DELTA_HACKED = 3122
+DELTA_RED = 3130
+DELTA_YELLOW = 3131
+DELTA_GREEN = 3132
 DELTA_RUN_STATE = 3133
 
 
@@ -80,11 +80,7 @@ class PLCMap:
 
 
 def make_context(unit_id: int):
-    coils = ModbusSequentialDataBlock(
-        1,
-        [False] * COIL_COUNT
-    )
-
+    coils = ModbusSequentialDataBlock(1, [False] * COIL_COUNT)
     device = ModbusDeviceContext(co=coils)
 
     return ModbusServerContext(
@@ -106,18 +102,18 @@ class VirtualPLC:
     async def get_coil(self, address: int) -> bool:
         values = await self.server.async_getValues(
             self.map.unit_id,
-            1,              # FC01 / coils
+            1,  # FC01 / coils
             int(address),
-            1
+            1,
         )
         return bool(values[0])
 
     async def set_coil(self, address: int, value: bool):
         await self.server.async_setValues(
             self.map.unit_id,
-            5,              # FC05 / coil space
+            5,  # FC05 / coil space
             int(address),
-            [bool(value)]
+            [bool(value)],
         )
 
     async def set_outputs(self, red: bool, yellow: bool, green: bool):
@@ -157,7 +153,6 @@ class VirtualPLC:
 
         if self.mode == "normal":
             t = elapsed % 20.0
-
             if t < 8.0:
                 await self.set_outputs(False, False, True)
             elif t < 10.0:
@@ -173,7 +168,6 @@ class VirtualPLC:
 
         elif self.mode == "hacked":
             t = elapsed % 1.4
-
             if t < 0.2:
                 await self.set_outputs(True, False, False)
             elif t < 0.4:
@@ -204,12 +198,12 @@ async def plc_scan_loop(m262: VirtualPLC, delta: VirtualPLC):
 
             async def state(p):
                 r = int(await p.get_coil(p.map.red))
-                a = int(await p.get_coil(p.map.yellow))
-                v = int(await p.get_coil(p.map.green))
+                y = int(await p.get_coil(p.map.yellow))
+                g = int(await p.get_coil(p.map.green))
                 return (
                     f"{p.map.name}: "
-                    f"modo={p.mode:<9} "
-                    f"R={r} A={a} V={v}"
+                    f"mode={p.mode:<9} "
+                    f"R={r} Y={y} G={g}"
                 )
 
             print(await state(m262))
@@ -261,7 +255,7 @@ async def main():
     m262.attach_server(m262_server)
     delta.attach_server(delta_server)
 
-    # Estado inicial: STOP en ambos.
+    # Initial state: both PLCs in STOP.
     await m262.set_coil(M262_TURN_ON, True)
     await delta.set_coil(DELTA_TURN_ON, True)
 
@@ -271,25 +265,25 @@ async def main():
     print("=" * 70)
     print()
     print("M262")
-    print(f"  SCADA IP:      127.0.0.1")
-    print(f"  Port:        {M262_PORT}")
+    print("  SCADA IP:      127.0.0.1")
+    print(f"  Port:          {M262_PORT}")
     print(f"  Unit ID:       {M262_UNIT_ID}")
     print(f"  START/STOP:    {M262_TURN_ON}")
-    print(f"  EMERGENCY:    {M262_EMERGENCY}")
+    print(f"  EMERGENCY:     {M262_EMERGENCY}")
     print(f"  HACKED:        {M262_HACKED}")
-    print(f"  RED:          {M262_RED}")
-    print(f"  YELLOW:      {M262_YELLOW}")
+    print(f"  RED:           {M262_RED}")
+    print(f"  YELLOW:        {M262_YELLOW}")
     print(f"  GREEN:         {M262_GREEN}")
     print()
     print("DELTA")
-    print(f"  SCADA IP:      127.0.0.1")
-    print(f"  Port:        {DELTA_PORT}")
+    print("  SCADA IP:      127.0.0.1")
+    print(f"  Port:          {DELTA_PORT}")
     print(f"  Unit ID:       {DELTA_UNIT_ID}")
     print(f"  START/STOP:    {DELTA_TURN_ON}")
-    print(f"  EMERGENCY:    {DELTA_EMERGENCY}")
+    print(f"  EMERGENCY:     {DELTA_EMERGENCY}")
     print(f"  HACKED:        {DELTA_HACKED}")
-    print(f"  RED:          {DELTA_RED}")
-    print(f"  YELLOW:      {DELTA_YELLOW}")
+    print(f"  RED:           {DELTA_RED}")
+    print(f"  YELLOW:        {DELTA_YELLOW}")
     print(f"  GREEN:         {DELTA_GREEN}")
     print()
     print("Both PLCs start in STOP.")

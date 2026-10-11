@@ -642,7 +642,7 @@ class App(tk.Tk):
 
         def worker():
             try:
-                # STOP both PLCs
+                # STOP both PLCs.
                 self.m262.node.write_m262_coil(
                     addr_m262, bool(self.m262.cfg["stop_value"])
                 )
@@ -650,7 +650,12 @@ class App(tk.Tk):
                     addr_delta, bool(self.delta.cfg["stop_value"])
                 )
 
-                # START M262 immediately.
+                # Give both emulated PLCs enough time to observe STOP and
+                # reset their internal cycle timers before restarting.
+                import time
+                time.sleep(0.5)
+
+                # START M262 and establish the phase reference.
                 self.m262.node.write_m262_coil(
                     addr_m262, bool(self.m262.cfg["start_value"])
                 )
@@ -663,7 +668,6 @@ class App(tk.Tk):
                             text=f"SYNCHRONIZING... {r}s"
                         )
                     )
-                    import time
                     time.sleep(1)
 
                 # START Delta after 10 seconds.

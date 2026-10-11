@@ -616,9 +616,10 @@ class App(tk.Tk):
         """
         Without changing either PLC program:
         1) STOP both PLCs
-        2) START M262
-        3) wait 10 s
-        4) START Delta
+        2) wait 0.5 s to allow STOP to reset the cycle timers
+        3) START M262
+        4) wait 10 s
+        5) START Delta
 
         With the current 20-second normal cycle, this leaves
         both traffic lights half a cycle out of phase.

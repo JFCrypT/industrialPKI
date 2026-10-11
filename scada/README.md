@@ -23,13 +23,13 @@ scada_dual_config.json
 Select a profile by copying it to that filename, or use:
 
 ```bash
-./scripts/select_emulator.sh
+./scripts/select_profile.sh emulator
 ```
 
 or:
 
 ```bash
-./scripts/select_physical.sh
+./scripts/select_profile.sh physical
 ```
 
 ## Run
@@ -57,7 +57,7 @@ The M262 client uses `ModbusTlsClient` with:
 - Client certificate: `pki/scada/certs/scada.crt`
 - Client private key: `pki/scada/private/scada.key`
 
-The M262 write path attempts both FC05 and FC15 as required by the laboratory implementation. Reads use FC01.
+The M262 write path uses FC15 (`write_coils`) even for a single coil. Reads use FC01. Delta may use FC05.
 
 ### Validated emulator path
 

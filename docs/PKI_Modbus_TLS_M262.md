@@ -118,7 +118,7 @@ Run all project commands from the repository root unless otherwise stated.
 Example local path:
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
+cd ~/industrialPKI
 ```
 
 ---
@@ -181,7 +181,7 @@ scada/scada_dual_config_physical.json
 ### Select emulator mode
 
 ```bash
-./scripts/select_emulator.sh
+./scripts/select_profile.sh emulator
 ```
 
 Equivalent commands:
@@ -194,7 +194,7 @@ cp scada/scada_dual_config_emulator.json scada/scada_dual_config.json
 ### Select physical mode
 
 ```bash
-./scripts/select_physical.sh
+./scripts/select_profile.sh physical
 ```
 
 Equivalent commands:
@@ -391,9 +391,9 @@ Configuration successful
 ### Terminal 1 — PLC emulator
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
+cd ~/industrialPKI
 source .venv/bin/activate
-./scripts/select_emulator.sh
+./scripts/select_profile.sh emulator
 python emulator/plc_emulator.py
 ```
 
@@ -413,8 +413,8 @@ ss -ltnp | grep -E ':1502|:1503'
 ### Terminal 2 — TLS gateway
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
-./scripts/select_emulator.sh
+cd ~/industrialPKI
+./scripts/select_profile.sh emulator
 docker compose up -d
 docker compose logs -f
 ```
@@ -428,7 +428,7 @@ SCADA -> TLS/802 -> Gateway -> Modbus TCP/1502 -> M262 emulator
 ### Terminal 3 — SCADA
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
+cd ~/industrialPKI
 source .venv/bin/activate
 python scada/scada_dual_m262_delta.py
 ```
@@ -700,7 +700,7 @@ For this laboratory, manual secure transfer of issued endpoint credentials is ac
 ### 14.4 Select physical gateway configuration
 
 ```bash
-./scripts/select_physical.sh
+./scripts/select_profile.sh physical
 ```
 
 Confirm `.env` points to the intended M262 backend if testing the gateway architecture.

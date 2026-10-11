@@ -124,20 +124,22 @@ pwd
 Expected form:
 
 ```text
-/home/<user>/Documents/Proyectos/industrialPKI
+<repository-root>
 ```
 
 ---
 
 ## 5. Create the Python environment
 
-### Automated method
+### Direct method
 
 ```bash
-./scripts/bootstrap_dev.sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-This creates `.venv`, upgrades `pip`, and installs `requirements.txt`.
+These commands create `.venv` and install `requirements.txt`.
 
 ### Manual equivalent
 
@@ -279,13 +281,7 @@ All three must show `O = CAETI`.
 
 ### Existing laboratory PKI
 
-If intentionally replacing an existing PKI, use:
-
-```bash
-./scripts/regenerate_pki_caeti.sh
-```
-
-That script creates a timestamped backup before replacing the credentials.
+`./scripts/generate_pki.sh` is for initial PKI generation only. It refuses to overwrite existing private keys. Before any intentional replacement, back up the complete CA and certificate state securely.
 
 ---
 
@@ -374,7 +370,7 @@ For a production-grade PKI, the stronger design is to generate the gateway priva
 ## 8. Select the emulator profile
 
 ```bash
-./scripts/select_emulator.sh
+./scripts/select_profile.sh emulator
 ```
 
 This performs:
@@ -396,20 +392,22 @@ The emulator uses TCP/1502 and TCP/1503 specifically to make the laboratory path
 
 ---
 
-## 9. One-command preparation
+## 9. Demo preparation
 
 ```bash
-./scripts/demo_prepare.sh
+./scripts/select_profile.sh emulator
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
 This:
 
 ```text
 1. selects the emulator profile
-2. creates/updates the Python virtual environment
-3. installs PyModbus
-4. verifies that required PKI files exist
-5. prints the three commands used for the demonstration
+2. creates the Python virtual environment
+3. installs the project requirements
+4. leaves credential verification and startup as separate steps
 ```
 
 ---
@@ -421,8 +419,8 @@ Use three terminals.
 ### Terminal 1 — dual PLC emulator
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
-./scripts/run_emulator.sh
+cd ~/industrialPKI
+python emulator/plc_emulator.py
 ```
 
 Expected endpoints:
@@ -442,8 +440,8 @@ Delta: mode=stopped R=0 A=0 V=0
 ### Terminal 2 — PKI/TLS gateway
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
-./scripts/run_gateway.sh
+cd ~/industrialPKI
+docker compose up -d --build
 ```
 
 Expected startup:
@@ -456,7 +454,7 @@ When the SCADA connects to the M262 path, expected evidence includes:
 
 ```text
 Certificate accepted at depth=0: C=AR, O=CAETI, OU=SCADA, CN=scada-testbed
-s_connect: connected 172.17.0.1:1502
+s_connect: connected host.docker.internal:1502
 Service [modbus-m262] connected remote server
 ```
 
@@ -465,8 +463,8 @@ The exact Docker bridge addresses can vary. The important points are certificate
 ### Terminal 3 — SCADA
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
-./scripts/run_scada.sh
+cd ~/industrialPKI
+python scada/scada_dual_m262_delta.py
 ```
 
 Connect both PLCs from the GUI.
@@ -495,7 +493,7 @@ SCADA -> TCP/1503 -> Delta emulator
 ## 11. Check the laboratory state
 
 ```bash
-./scripts/lab_status.sh
+docker compose ps
 ```
 
 Useful manual check:
@@ -640,14 +638,14 @@ Delta remains plaintext Modbus/TCP by design.
 ## 15. Stop the local gateway
 
 ```bash
-./scripts/stop_gateway.sh
+docker compose down
 ```
 
 Stop the emulator and SCADA with `Ctrl+C` / normal window close.
 
 ---
 
-# PART III — RASPBERRY PI GATEWAY FOR NEUQUÉN
+# PART III — RASPBERRY PI GATEWAY FOR PORTABLE DEPLOYMENT
 
 ## 16. Raspberry Pi role
 
@@ -712,7 +710,7 @@ Or copy the sanitized project ZIP to the Raspberry Pi and unpack it:
 ```bash
 mkdir -p ~/Documents
 cd ~/Documents
-unzip /path/to/industrialPKI_GitHub_ready_CAETI.zip
+unzip industrialPKI.zip
 ```
 
 Enter the actual repository root before running any project script.
@@ -802,18 +800,28 @@ dist/gateway_credentials.tar.gz
 
 to the deployment operator/the Raspberry Pi using a trusted transfer method.
 
-On the Raspberry Pi, after Docker installation and one re-login, the fastest path is the one-command provisioning wrapper:
+On the Raspberry Pi, after Docker installation and one re-login, provision with explicit commands:
 
 ```bash
-./scripts/provision_raspberry_gateway.sh /path/to/gateway_credentials.tar.gz
+tar -xzf ~/gateway_credentials.tar.gz -C /tmp
+mkdir -p pki/ca/certs pki/gateway/certs pki/gateway/private
+install -m 0644 /tmp/gateway_credentials/rootCA.crt pki/ca/certs/rootCA.crt
+install -m 0644 /tmp/gateway_credentials/gateway.crt pki/gateway/certs/gateway.crt
+install -m 0600 /tmp/gateway_credentials/gateway.key pki/gateway/private/gateway.key
+./scripts/select_profile.sh physical
+docker compose up -d --build
 ```
 
-It installs the gateway credentials, selects the physical `.env` backend, builds the container, starts it, and prints status.
+These commands install the gateway credentials, select the physical profile, and start the container. Check status separately with `docker compose ps`.
 
 Manual equivalent:
 
 ```bash
-./scripts/install_gateway_credentials.sh /path/to/gateway_credentials.tar.gz
+tar -xzf ~/gateway_credentials.tar.gz -C /tmp
+mkdir -p pki/ca/certs pki/gateway/certs pki/gateway/private
+install -m 0644 /tmp/gateway_credentials/rootCA.crt pki/ca/certs/rootCA.crt
+install -m 0644 /tmp/gateway_credentials/gateway.crt pki/gateway/certs/gateway.crt
+install -m 0600 /tmp/gateway_credentials/gateway.key pki/gateway/private/gateway.key
 ./scripts/deploy_physical_gateway.sh
 ```
 
@@ -846,7 +854,7 @@ and the real gateway IP must appear in the certificate SAN.
 ## 21. Select the physical gateway profile
 
 ```bash
-./scripts/select_physical.sh
+./scripts/select_profile.sh physical
 ```
 
 This creates active configuration from:
@@ -927,10 +935,14 @@ The SCADA host needs its own deployment bundle, created on the CA workstation:
 dist/scada_credentials.tar.gz
 ```
 
-Install automatically from the transferred bundle:
+Install from the transferred bundle:
 
 ```bash
-./scripts/install_scada_credentials.sh /path/to/scada_credentials.tar.gz
+tar -xzf ~/scada_credentials.tar.gz -C /tmp
+mkdir -p pki/ca/certs pki/scada/certs pki/scada/private
+install -m 0644 /tmp/scada_credentials/rootCA.crt pki/ca/certs/rootCA.crt
+install -m 0644 /tmp/scada_credentials/scada.crt pki/scada/certs/scada.crt
+install -m 0600 /tmp/scada_credentials/scada.key pki/scada/private/scada.key
 ```
 
 This installs:
@@ -944,7 +956,7 @@ pki/scada/private/scada.key
 Select the physical profile:
 
 ```bash
-./scripts/select_physical.sh
+./scripts/select_profile.sh physical
 ```
 
 Physical M262 SCADA endpoint:
@@ -1004,7 +1016,7 @@ Do not invent offsets.
 Once confirmed, update the physical template, then re-select it:
 
 ```bash
-./scripts/select_physical.sh
+./scripts/select_profile.sh physical
 ```
 
 ---
@@ -1043,7 +1055,7 @@ Start the Raspberry gateway:
 On the SCADA host:
 
 ```bash
-./scripts/run_scada.sh
+python scada/scada_dual_m262_delta.py
 ```
 
 Connect M262.
@@ -1238,7 +1250,7 @@ Example:
 
 ```text
 Certificate accepted at depth=0: C=AR, O=CAETI, OU=SCADA, CN=scada-testbed
-s_connect: connected 172.17.0.1:1502
+s_connect: connected host.docker.internal:1502
 Service [modbus-m262] connected remote server
 ```
 
@@ -1262,37 +1274,40 @@ Encrypted Application Data
 Prepare once:
 
 ```bash
-./scripts/demo_prepare.sh
+./scripts/select_profile.sh emulator
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
 Terminal 1:
 
 ```bash
-./scripts/run_emulator.sh
+python emulator/plc_emulator.py
 ```
 
 Terminal 2:
 
 ```bash
-./scripts/run_gateway.sh
+docker compose up -d --build
 ```
 
 Terminal 3:
 
 ```bash
-./scripts/run_scada.sh
+python scada/scada_dual_m262_delta.py
 ```
 
 Status:
 
 ```bash
-./scripts/lab_status.sh
+docker compose ps
 ```
 
 Stop gateway:
 
 ```bash
-./scripts/stop_gateway.sh
+docker compose down
 ```
 
 ---
@@ -1305,10 +1320,16 @@ One-time OS/Docker preparation:
 ./scripts/bootstrap_raspberry_gateway.sh
 ```
 
-After re-login, provision and deploy in one command:
+After re-login, provision credentials, select the physical profile, and deploy:
 
 ```bash
-./scripts/provision_raspberry_gateway.sh /path/to/gateway_credentials.tar.gz
+tar -xzf ~/gateway_credentials.tar.gz -C /tmp
+mkdir -p pki/ca/certs pki/gateway/certs pki/gateway/private
+install -m 0644 /tmp/gateway_credentials/rootCA.crt pki/ca/certs/rootCA.crt
+install -m 0644 /tmp/gateway_credentials/gateway.crt pki/gateway/certs/gateway.crt
+install -m 0600 /tmp/gateway_credentials/gateway.key pki/gateway/private/gateway.key
+./scripts/select_profile.sh physical
+docker compose up -d --build
 ```
 
 Logs:

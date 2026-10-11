@@ -191,7 +191,7 @@ pki_backup_*/
 Run all commands from the repository root:
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
+cd ~/industrialPKI
 ```
 
 ### First-time Python setup
@@ -220,7 +220,7 @@ cp scada/scada_dual_config_emulator.json scada/scada_dual_config.json
 Expected `.env`:
 
 ```text
-M262_IP=172.17.0.1
+M262_IP=host.docker.internal
 M262_PORT=1502
 ```
 
@@ -235,7 +235,7 @@ Delta SCADA endpoint    127.0.0.1:1503 TCP
 ### Terminal 1 — PLC emulator
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
+cd ~/industrialPKI
 source .venv/bin/activate
 python emulator/plc_emulator.py
 ```
@@ -243,7 +243,7 @@ python emulator/plc_emulator.py
 ### Terminal 2 — TLS gateway
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
+cd ~/industrialPKI
 docker compose up -d --build
 docker compose logs -f
 ```
@@ -251,7 +251,7 @@ docker compose logs -f
 ### Terminal 3 — SCADA
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
+cd ~/industrialPKI
 source .venv/bin/activate
 python scada/scada_dual_m262_delta.py
 ```
@@ -287,7 +287,7 @@ Generate the CAETI PKI on the trusted CA workstation.
 Example, using gateway IP `192.168.0.24`:
 
 ```bash
-cd ~/Documents/Proyectos/industrialPKI
+cd ~/industrialPKI
 ./scripts/generate_pki.sh 192.168.0.24
 ```
 
@@ -362,7 +362,7 @@ The Root CA private key stays on the CA workstation.
 ### On the Raspberry Pi — first installation only
 
 ```bash
-cd /home/usuario/Documents/
+cd ~/
 git clone https://github.com/JFCrypT/industrialPKI.git
 cd industrialPKI
 ```
@@ -380,7 +380,7 @@ If the script adds the current user to the `docker` group, log out and back in o
 Assuming:
 
 ```text
-/home/usuario/Documents/bundle.zip
+~/bundle.zip
 ```
 
 contains directly:
@@ -394,7 +394,7 @@ gateway.key
 run from:
 
 ```text
-/home/usuario/Documents/industrialPKI
+~/industrialPKI
 ```
 
 ```bash
@@ -402,7 +402,7 @@ mkdir -p pki/ca/certs pki/gateway/certs pki/gateway/private
 
 tmpdir="$(mktemp -d)"
 
-unzip /home/usuario/Documents/bundle.zip -d "$tmpdir"
+unzip ~/bundle.zip -d "$tmpdir"
 
 install -m 0644 "$tmpdir/rootCA.crt" \
   pki/ca/certs/rootCA.crt
@@ -435,7 +435,7 @@ cat .env
 Expected:
 
 ```text
-M262_IP=172.17.0.1
+M262_IP=host.docker.internal
 M262_PORT=1502
 ```
 

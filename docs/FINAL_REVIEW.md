@@ -15,7 +15,10 @@ This repository was reviewed for the laboratory release of `industrialPKI`.
 Run the local audit at any time with:
 
 ```bash
-./scripts/check_project.sh
+python3 -m compileall -q scada emulator
+python3 -m json.tool scada/scada_dual_config_emulator.json >/dev/null
+python3 -m json.tool scada/scada_dual_config_physical.json >/dev/null
+for script in scripts/*.sh; do bash -n "$script" || exit 1; done
 ```
 
 ## Validated laboratory scope

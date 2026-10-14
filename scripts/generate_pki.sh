@@ -29,7 +29,10 @@ openssl req -x509 -new -sha256 \
   -key pki/ca/private/rootCA.key \
   -days 3650 \
   -out pki/ca/certs/rootCA.crt \
-  -subj "/C=AR/O=CAETI/OU=Industrial Security Lab/CN=CAETI Industrial Root CA"
+  -subj "/C=AR/O=CAETI/OU=Industrial Security Lab/CN=CAETI Industrial Root CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -addext "subjectKeyIdentifier=hash"
 
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 \
   -out pki/gateway/private/gateway.key
